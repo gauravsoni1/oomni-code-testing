@@ -1,3 +1,4 @@
+import { ConflictException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { ProductsController } from './products.controller';
 import { ProductsService } from './products.service';
@@ -17,6 +18,7 @@ const mockProductsService = {
   create: jest.fn(),
   findAll: jest.fn(),
   findOne: jest.fn(),
+  update: jest.fn(),
 };
 
 describe('ProductsController', () => {
@@ -64,6 +66,35 @@ describe('ProductsController', () => {
 
       expect(mockProductsService.findOne).toHaveBeenCalledWith('cltest001');
       expect(result).toEqual(mockProduct);
+    });
+  });
+
+  describe('update', () => {
+    it('should call service.update with id and dto and return result', async () => {
+      const updated = { ...mockProduct, name: 'Renamed' };
+      mockProductsService.update.mockResolvedValue(updated);
+
+      const dto = { name: 'Renamed' };
+      const result = await controller.update('cltest001', dto);
+
+      expect(mockProductsService.update).toHaveBeenCalledWith('cltest001', dto);
+      expect(result).toEqual(updated);
+    });
+
+    it('should propagate NotFoundException from service', async () => {
+      mockProductsService.update.mockRejectedValue(new NotFoundException());
+
+      await expect(controller.update('nonexistent', { name: 'X' })).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('should propagate ConflictException from service', async () => {
+      mockProductsService.update.mockRejectedValue(new ConflictException());
+
+      await expect(controller.update('cltest001', { sku: 'TAKEN' })).rejects.toThrow(
+        ConflictException,
+      );
     });
   });
 });

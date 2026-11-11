@@ -11,6 +11,7 @@ const mockPrismaService = {
     create: jest.fn(),
     findMany: jest.fn().mockResolvedValue([]),
     findUnique: jest.fn().mockResolvedValue(null),
+    update: jest.fn(),
   },
   customer: {
     create: jest.fn(),
@@ -66,10 +67,7 @@ describe('AppController (e2e)', () => {
 
   describe('GET /api/v1/products', () => {
     it('should return 200 with empty array', () => {
-      return request(app.getHttpServer())
-        .get('/api/v1/products')
-        .expect(200)
-        .expect([]);
+      return request(app.getHttpServer()).get('/api/v1/products').expect(200).expect([]);
     });
   });
 
@@ -106,9 +104,76 @@ describe('AppController (e2e)', () => {
     it('should return 404 for non-existent product id', () => {
       mockPrismaService.product.findUnique.mockResolvedValue(null);
 
+      return request(app.getHttpServer()).get('/api/v1/products/nonexistent-id').expect(404);
+    });
+  });
+
+  describe('PATCH /api/v1/products/:id', () => {
+    const existing = {
+      id: 'cle2e001',
+      name: 'E2E Headphones',
+      description: 'An e2e test product',
+      sku: 'E2E-001',
+      price: '199.99',
+      active: true,
+      createdAt: new Date('2024-01-01'),
+      updatedAt: new Date('2024-01-01'),
+    };
+
+    it('should return 200 with the updated product and only send provided fields', () => {
+      mockPrismaService.product.update.mockResolvedValue({ ...existing, price: '149.99' });
+
       return request(app.getHttpServer())
-        .get('/api/v1/products/nonexistent-id')
+        .patch('/api/v1/products/cle2e001')
+        .send({ price: 149.99 })
+        .expect(200)
+        .expect((res) => {
+          expect(res.body).toMatchObject({
+            id: 'cle2e001',
+            name: 'E2E Headphones',
+            price: '149.99',
+          });
+          expect(mockPrismaService.product.update).toHaveBeenCalledWith({
+            where: { id: 'cle2e001' },
+            data: { price: 149.99 },
+          });
+        });
+    });
+
+    it('should return 404 when the product does not exist', () => {
+      mockPrismaService.product.update.mockRejectedValue({ code: 'P2025' });
+
+      return request(app.getHttpServer())
+        .patch('/api/v1/products/nonexistent-id')
+        .send({ name: 'New name' })
         .expect(404);
+    });
+
+    it('should return 409 when the SKU belongs to another product', () => {
+      mockPrismaService.product.update.mockRejectedValue({ code: 'P2002' });
+
+      return request(app.getHttpServer())
+        .patch('/api/v1/products/cle2e001')
+        .send({ sku: 'TAKEN-001' })
+        .expect(409);
+    });
+
+    it.each([
+      [{ price: -5 }],
+      [{ price: 'abc' }],
+      [{ price: 1.999 }],
+      [{ name: '' }],
+      [{ sku: null }],
+      [{ active: 'yes' }],
+      [{ unknownField: 1 }],
+    ])('should return 400 for invalid body %j', (body) => {
+      return request(app.getHttpServer())
+        .patch('/api/v1/products/cle2e001')
+        .send(body)
+        .expect(400)
+        .expect(() => {
+          expect(mockPrismaService.product.update).not.toHaveBeenCalled();
+        });
     });
   });
 });
